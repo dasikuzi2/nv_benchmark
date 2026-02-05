@@ -65,12 +65,12 @@ void test_block_config(const DeviceInfo* info, float* d_input, float* d_output,
     printf("\n========== 测试1: Block配置影响 ==========\n\n");
     
     int block_size[] = {128, 256, 512, 1024};
-    int configs[] = {1, 2, 4, 8};
+    int configs[] = {1, 2, 4};
     
     Timer timer;
     timer_init(&timer);
     
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 4; j++){
             int num_blocks = info->sm_count * configs[i];
             int threadperblock = block_size[j];
@@ -151,7 +151,7 @@ void test_vectorization(const DeviceInfo* info, float* d_input, float* d_output,
                         size_t n, int iterations) {
     printf("\n========== 测试3: 向量化 ==========\n\n");
     
-    int configs[] = {1, 2, 4, 8};
+    int configs[] = {1, 2, 4};
     int block_size[] = {128, 256, 512, 1024};
     
     Timer timer;
@@ -160,7 +160,7 @@ void test_vectorization(const DeviceInfo* info, float* d_input, float* d_output,
     float4* d_input4 = reinterpret_cast<float4*>(d_input);
     float4* d_output4 = reinterpret_cast<float4*>(d_output);
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 4; j++) {
             
             int num_blocks = info->sm_count * configs[i];
