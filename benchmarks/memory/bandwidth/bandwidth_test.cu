@@ -64,31 +64,33 @@ void test_block_config(const DeviceInfo* info, float* d_input, float* d_output,
                        size_t n, int iterations) {
     printf("\n========== 测试1: Block配置影响 ==========\n\n");
     
-    const int block_size = 256;
+    int block_size[] = {128, 256, 512, 1024};
     int configs[] = {1, 2, 4, 8};
     
     Timer timer;
     timer_init(&timer);
     
     for (int i = 0; i < 4; i++) {
-        int num_blocks = info->sm_count * configs[i];
-        
-        // Warmup
-        load_float_kernel<<<num_blocks, block_size>>>(d_input, d_output, n);
-        CUDA_CHECK(cudaDeviceSynchronize());
-        
-        // 计时
-        timer_start(&timer);
-        for (int j = 0; j < iterations; j++) {
-            load_float_kernel<<<num_blocks, block_size>>>(d_input, d_output, n);
+        for (int j = 0; j < 4; j++){
+            int num_blocks = info->sm_count * configs[i];
+            int threadperblock = block_size[j];
+            // Warmup
+            load_float_kernel<<<num_blocks, threadperblock>>>(d_input, d_output, n);
+            CUDA_CHECK(cudaDeviceSynchronize());
+            
+            // 计时
+            timer_start(&timer);
+            for (int j = 0; j < iterations; j++) {
+                load_float_kernel<<<num_blocks, threadperblock>>>(d_input, d_output, n);
+            }
+            float ms = timer_stop(&timer);
+            
+            double bw = calculate_bandwidth(n * sizeof(float) * iterations, ms);
+            double efficiency = (bw / info->theoretical_bandwidth) * 100.0;
+            
+            printf("Blocks=%4d (%dx SMs), threadperblock=%d: %7.2f GB/s (效率 %.1f%%)\n",
+                num_blocks, configs[i], block_size[j], bw, efficiency);
         }
-        float ms = timer_stop(&timer);
-        
-        double bw = calculate_bandwidth(n * sizeof(float) * iterations, ms);
-        double efficiency = (bw / info->theoretical_bandwidth) * 100.0;
-        
-        printf("Blocks=%4d (%dx SMs): %7.2f GB/s (效率 %.1f%%)\n",
-               num_blocks, configs[i], bw, efficiency);
     }
     
     timer_destroy(&timer);
@@ -150,7 +152,7 @@ void test_vectorization(const DeviceInfo* info, float* d_input, float* d_output,
     printf("\n========== 测试3: 向量化 ==========\n\n");
     
     int configs[] = {1, 2, 4, 8};
-    const int block_size = 256;
+    int block_size[] = {128, 256, 512, 1024};
     
     Timer timer;
     timer_init(&timer);
@@ -159,23 +161,26 @@ void test_vectorization(const DeviceInfo* info, float* d_input, float* d_output,
     float4* d_output4 = reinterpret_cast<float4*>(d_output);
 
     for (int i = 0; i < 4; i++) {
-        int num_blocks = info->sm_count * configs[i];
+        for (int j = 0; j < 4; j++) {
+            
+            int num_blocks = info->sm_count * configs[i];
+            int threadperblock = block_size[j];
+            // Warmup
+            load_float4_kernel<<<num_blocks, threadperblock>>>(d_input4, d_output4, n / 4);
+            CUDA_CHECK(cudaDeviceSynchronize());
 
-        // Warmup
-        load_float4_kernel<<<num_blocks, block_size>>>(d_input4, d_output4, n / 4);
-        CUDA_CHECK(cudaDeviceSynchronize());
+            timer_start(&timer);
+            for (int j = 0; j < iterations; j++) {
+                load_float4_kernel<<<num_blocks, threadperblock>>>(d_input4, d_output4, n / 4);
+            }
+            float ms = timer_stop(&timer);
 
-        timer_start(&timer);
-        for (int j = 0; j < iterations; j++) {
-            load_float4_kernel<<<num_blocks, block_size>>>(d_input4, d_output4, n / 4);
+            double bw = calculate_bandwidth(n * sizeof(float) * iterations, ms);
+            double efficiency = (bw / info->theoretical_bandwidth) * 100.0;
+
+            printf("Blocks=%4d (%dx SMs), threadperblock=%d: %7.2f GB/s (效率 %.1f%%)\n",
+                num_blocks, configs[i], block_size[j], bw, efficiency);
         }
-        float ms = timer_stop(&timer);
-
-        double bw = calculate_bandwidth(n * sizeof(float) * iterations, ms);
-        double efficiency = (bw / info->theoretical_bandwidth) * 100.0;
-
-        printf("Blocks=%4d (%dx SMs): %7.2f GB/s (效率 %.1f%%)\n",
-               num_blocks, configs[i], bw, efficiency);
     }
     
     timer_destroy(&timer);
@@ -204,7 +209,7 @@ int main() {
     
     // 运行测试
     test_block_config(&info, d_input, d_output, N, iterations);
-    test_l2_cache(&info, d_input, d_output, iterations);
+    // test_l2_cache(&info, d_input, d_output, iterations);
     test_vectorization(&info, d_input, d_output, N, iterations);
     
     // 清理
