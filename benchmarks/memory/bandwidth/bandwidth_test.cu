@@ -62,7 +62,7 @@ __global__ void load_float4_kernel(const float4* __restrict__ input,
  */
 void test_block_config(const DeviceInfo* info, float* d_input, float* d_output, 
                        size_t n, int iterations) {
-    printf("\n========== 测试1: Block配置影响 ==========\n\n");
+    printf("\n========== 测试1: 标量测试float ==========\n\n");
     
     int block_size[] = {128, 256, 512, 1024};
     int configs[] = {1, 2, 4};
@@ -149,7 +149,7 @@ void test_l2_cache(const DeviceInfo* info, float* d_input, float* d_output,
  */
 void test_vectorization(const DeviceInfo* info, float* d_input, float* d_output,
                         size_t n, int iterations) {
-    printf("\n========== 测试3: 向量化 ==========\n\n");
+    printf("\n========== 测试3: 向量测试float4 ==========\n\n");
     
     int configs[] = {1, 2, 4};
     int block_size[] = {128, 256, 512, 1024};
