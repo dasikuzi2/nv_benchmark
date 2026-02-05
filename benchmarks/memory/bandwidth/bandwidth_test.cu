@@ -147,37 +147,36 @@ void test_l2_cache(const DeviceInfo* info, float* d_input, float* d_output,
  */
 void test_vectorization(const DeviceInfo* info, float* d_input, float* d_output,
                         size_t n, int iterations) {
-    printf("\n========== 测试3: 向量化 (float vs float4) ==========\n\n");
+    printf("\n========== 测试3: 向量化 ==========\n\n");
     
-    const int num_blocks = info->sm_count * 8;
+    int configs[] = {1, 2, 4, 8};
     const int block_size = 256;
     
     Timer timer;
     timer_init(&timer);
-    
-    // 测试 float
-    timer_start(&timer);
-    for (int i = 0; i < iterations; i++) {
-        load_float_kernel<<<num_blocks, block_size>>>(d_input, d_output, n);
-    }
-    float ms_float = timer_stop(&timer);
-    double bw_float = calculate_bandwidth(n * sizeof(float) * iterations, ms_float);
-    
-    // 测试 float4
+
     float4* d_input4 = reinterpret_cast<float4*>(d_input);
     float4* d_output4 = reinterpret_cast<float4*>(d_output);
-    size_t n4 = n / 4;
-    
-    timer_start(&timer);
-    for (int i = 0; i < iterations; i++) {
-        load_float4_kernel<<<num_blocks, block_size>>>(d_input4, d_output4, n4);
+
+    for (int i = 0; i < 4; i++) {
+        int num_blocks = info->sm_count * configs[i];
+
+        // Warmup
+        load_float4_kernel<<<num_blocks, block_size>>>(d_input4, d_output4, n / 4);
+        CUDA_CHECK(cudaDeviceSynchronize());
+
+        timer_start(&timer);
+        for (int j = 0; j < iterations; j++) {
+            load_float4_kernel<<<num_blocks, block_size>>>(d_input4, d_output4, n / 4);
+        }
+        float ms = timer_stop(&timer);
+
+        double bw = calculate_bandwidth(n * sizeof(float) * iterations, ms);
+        double efficiency = (bw / info->theoretical_bandwidth) * 100.0;
+
+        printf("Blocks=%4d (%dx SMs): %7.2f GB/s (效率 %.1f%%)\n",
+               num_blocks, configs[i], bw, efficiency);
     }
-    float ms_float4 = timer_stop(&timer);
-    double bw_float4 = calculate_bandwidth(n * sizeof(float) * iterations, ms_float4);
-    
-    printf("float:   %7.2f GB/s\n", bw_float);
-    printf("float4:  %7.2f GB/s (+%.1f%% 提升)\n", 
-           bw_float4, ((bw_float4 / bw_float) - 1.0) * 100.0);
     
     timer_destroy(&timer);
 }
