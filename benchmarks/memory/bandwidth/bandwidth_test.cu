@@ -32,6 +32,47 @@ __global__ void load_float_kernel(const float* __restrict__ input,
     }
 }
 
+__global__ void load_float_kernel_2input(const float* __restrict__ input1,
+                                   const float* __restrict__ input,
+                                   float* __restrict__ output,
+                                   size_t n) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t stride = blockDim.x * gridDim.x;
+    
+    float sum = 0.0f;
+    for (size_t i = idx; i < n; i += stride) {
+        sum += input[i];
+        sum += input1[i];
+    }
+    
+    // 写入一个值（最小化写带宽影响）
+    if (idx < gridDim.x * blockDim.x) {
+        output[idx] = sum;
+    }
+}
+
+__global__ void load_float_kernel_4input(const float* __restrict__ input1,
+                                   const float* __restrict__ input,
+                                   const float* __restrict__ input2,
+                                   const float* __restrict__ input3,
+                                   float* __restrict__ output,
+                                   size_t n) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t stride = blockDim.x * gridDim.x;
+    
+    float sum = 0.0f;
+    for (size_t i = idx; i < n; i += stride) {
+        sum += input[i];
+        sum += input1[i];
+        sum += input2[i];
+        sum += input3[i];
+    }
+    
+    // 写入一个值（最小化写带宽影响）
+    if (idx < gridDim.x * blockDim.x) {
+        output[idx] = sum;
+    }
+}
 /**
  * @brief 向量化加载测试 (float4)
  */
@@ -55,13 +96,62 @@ __global__ void load_float4_kernel(const float4* __restrict__ input,
     }
 }
 
+__global__ void load_float4_kernel_2input(const float4* __restrict__ input,
+                                    const float4* __restrict__ input1,
+                                    float4* __restrict__ output,
+                                    size_t n) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t stride = blockDim.x * gridDim.x;
+    
+    float4 sum = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    for (size_t i = idx; i < n; i += stride) {
+        float4 val = input[i];
+        float4 val1 = input1[i];
+        sum.x += val.x + val1.x;
+        sum.y += val.y + val1.y;
+        sum.z += val.z + val1.z;
+        sum.w += val.w + val1.w;
+    }
+    
+    if (idx < gridDim.x * blockDim.x) {
+        output[idx] = sum;
+    }
+}
+
+__global__ void load_float4_kernel_4input(const float4* __restrict__ input,
+                                    const float4* __restrict__ input1,
+                                    const float4* __restrict__ input2,
+                                    const float4* __restrict__ input3,
+                                    float4* __restrict__ output,
+                                    size_t n) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t stride = blockDim.x * gridDim.x;
+    
+    float4 sum = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    for (size_t i = idx; i < n; i += stride) {
+        float4 val = input[i];
+        float4 val1 = input1[i];
+        float4 val2 = input2[i];
+        float4 val3 = input3[i];
+        sum.x += val.x + val1.x + val2.x + val3.x;
+        sum.y += val.y + val1.y + val2.x + val3.x;
+        sum.z += val.z + val1.z + val2.x + val3.x;
+        sum.w += val.w + val1.w + val2.x + val3.x;
+    }
+    
+    if (idx < gridDim.x * blockDim.x) {
+        output[idx] = sum;
+    }
+}
+
 // ==================== 测试函数 ====================
 
 /**
  * @brief 测试不同Block配置
  */
-void test_block_config(const DeviceInfo* info, float* d_input, float* d_output, 
-                       size_t n, int iterations) {
+void test_block_config(const DeviceInfo* info, float* d_input,
+                        float* d_input1, float* d_input2, float* d_input3,
+                        float* d_output, size_t n, int iterations) {
     printf("\n========== 测试1: 标量测试float ==========\n\n");
     
     int block_size[] = {128, 256, 512, 1024};
@@ -69,6 +159,10 @@ void test_block_config(const DeviceInfo* info, float* d_input, float* d_output,
     
     Timer timer;
     timer_init(&timer);
+    Timer timer1;
+    timer_init(&timer1);
+    Timer timer2;
+    timer_init(&timer2);
     
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 4; j++){
@@ -76,6 +170,8 @@ void test_block_config(const DeviceInfo* info, float* d_input, float* d_output,
             int threadperblock = block_size[j];
             // Warmup
             load_float_kernel<<<num_blocks, threadperblock>>>(d_input, d_output, n);
+            load_float_kernel_2input<<<num_blocks, threadperblock>>>(d_input, d_input1, d_output, n);
+            load_float_kernel_4input<<<num_blocks, threadperblock>>>(d_input, d_input1, d_input2, d_input3, d_output, n);
             CUDA_CHECK(cudaDeviceSynchronize());
             
             // 计时
@@ -87,9 +183,27 @@ void test_block_config(const DeviceInfo* info, float* d_input, float* d_output,
             
             double bw = calculate_bandwidth(n * sizeof(float) * iterations, ms);
             double efficiency = (bw / info->theoretical_bandwidth) * 100.0;
+
+            timer_start(&timer1);
+            for (int j = 0; j < iterations; j++) {
+                load_float_kernel_2input<<<num_blocks, threadperblock>>>(d_input, d_input1, d_output, n);
+            }
+            float ms1 = timer_stop(&timer1);
             
-            printf("Blocks=%4d (%dx SMs), threadperblock=%4d: %7.2f GB/s (效率 %.1f%%)\n",
-                num_blocks, configs[i], block_size[j], bw, efficiency);
+            double bw1 = calculate_bandwidth(2 * n * sizeof(float) * iterations, ms1);
+            double efficiency1 = (bw1 / info->theoretical_bandwidth) * 100.0;
+
+            timer_start(&timer2);
+            for (int j = 0; j < iterations; j++) {
+                load_float_kernel_4input<<<num_blocks, threadperblock>>>(d_input, d_input1, d_input2, d_input3, d_output, n);
+            }
+            float ms2 = timer_stop(&timer2);
+
+            double bw2 = calculate_bandwidth(4 * n * sizeof(float) * iterations, ms2);
+            double efficiency2 = (bw2 / info->theoretical_bandwidth) * 100.0;
+
+            printf("Blocks=%4d (%dx SMs), threadperblock=%4d: 一个线程一次load %7.2f GB/s (效率 %.1f%%)  一个线程两次load %7.2f GB/s (效率 %.1f%%)  一个线程四次load %7.2f GB/s (效率 %.1f%%)\n",
+                num_blocks, configs[i], block_size[j], bw, efficiency, bw1, efficiency1, bw2, efficiency2);
         }
     }
     
@@ -147,8 +261,9 @@ void test_l2_cache(const DeviceInfo* info, float* d_input, float* d_output,
 /**
  * @brief 测试向量化
  */
-void test_vectorization(const DeviceInfo* info, float* d_input, float* d_output,
-                        size_t n, int iterations) {
+void test_vectorization(const DeviceInfo* info, float* d_input, 
+                        float* d_input1, float* d_input2, float* d_input3,
+                        float* d_output, size_t n, int iterations) {
     printf("\n========== 测试3: 向量测试float4 ==========\n\n");
     
     int configs[] = {1, 2, 4};
@@ -156,8 +271,15 @@ void test_vectorization(const DeviceInfo* info, float* d_input, float* d_output,
     
     Timer timer;
     timer_init(&timer);
+    Timer timer1;
+    timer_init(&timer1);
+    Timer timer2;
+    timer_init(&timer2);
 
     float4* d_input4 = reinterpret_cast<float4*>(d_input);
+    float4* d_input1_4 = reinterpret_cast<float4*>(d_input1);
+    float4* d_input2_4 = reinterpret_cast<float4*>(d_input2);
+    float4* d_input3_4 = reinterpret_cast<float4*>(d_input3);
     float4* d_output4 = reinterpret_cast<float4*>(d_output);
 
     for (int i = 0; i < 3; i++) {
@@ -167,6 +289,8 @@ void test_vectorization(const DeviceInfo* info, float* d_input, float* d_output,
             int threadperblock = block_size[j];
             // Warmup
             load_float4_kernel<<<num_blocks, threadperblock>>>(d_input4, d_output4, n / 4);
+            load_float4_kernel_2input<<<num_blocks, threadperblock>>>(d_input4, d_input1_4, d_output4, n / 4);
+            load_float4_kernel_4input<<<num_blocks, threadperblock>>>(d_input4, d_input1_4, d_input2_4, d_input3_4, d_output4, n / 4);
             CUDA_CHECK(cudaDeviceSynchronize());
 
             timer_start(&timer);
@@ -178,8 +302,26 @@ void test_vectorization(const DeviceInfo* info, float* d_input, float* d_output,
             double bw = calculate_bandwidth(n * sizeof(float) * iterations, ms);
             double efficiency = (bw / info->theoretical_bandwidth) * 100.0;
 
-            printf("Blocks=%4d (%dx SMs), threadperblock=%4d: %7.2f GB/s (效率 %.1f%%)\n",
-                num_blocks, configs[i], block_size[j], bw, efficiency);
+            timer_start(&timer1);
+            for (int j = 0; j < iterations; j++) {
+                load_float4_kernel_2input<<<num_blocks, threadperblock>>>(d_input4, d_input1_4, d_output4, n / 4);
+            }
+            float ms1 = timer_stop(&timer1);
+            
+            double bw1 = calculate_bandwidth(2 * n * sizeof(float) * iterations, ms1);
+            double efficiency1 = (bw1 / info->theoretical_bandwidth) * 100.0;
+
+            timer_start(&timer2);
+            for (int j = 0; j < iterations; j++) {
+                load_float4_kernel_4input<<<num_blocks, threadperblock>>>(d_input4, d_input1_4, d_input2_4, d_input3_4, d_output4, n / 4);
+            }
+            float ms2 = timer_stop(&timer2);
+
+            double bw2 = calculate_bandwidth(4 * n * sizeof(float) * iterations, ms2);
+            double efficiency2 = (bw2 / info->theoretical_bandwidth) * 100.0;
+
+            printf("Blocks=%4d (%dx SMs), threadperblock=%4d: 一个线程一次load %7.2f GB/s (效率 %.1f%%)  一个线程两次load %7.2f GB/s (效率 %.1f%%)  一个线程四次load %7.2f GB/s (效率 %.1f%%)\n",
+                num_blocks, configs[i], block_size[j], bw, efficiency, bw1, efficiency1, bw2, efficiency2);
         }
     }
     
@@ -199,8 +341,11 @@ int main() {
     const size_t bytes = N * sizeof(float); // 1GB
     const int iterations = 100;
     
-    float *d_input, *d_output;
+    float *d_input, *d_input1, *d_input2, *d_input3, *d_output;
     CUDA_CHECK(cudaMalloc(&d_input, bytes));
+    CUDA_CHECK(cudaMalloc(&d_input1, bytes));
+    CUDA_CHECK(cudaMalloc(&d_input2, bytes));
+    CUDA_CHECK(cudaMalloc(&d_input3, bytes));
     CUDA_CHECK(cudaMalloc(&d_output, bytes));
     CUDA_CHECK(cudaMemset(d_input, 0x42, bytes));
     
@@ -208,12 +353,15 @@ int main() {
     printf("迭代次数: %d\n", iterations);
     
     // 运行测试
-    test_block_config(&info, d_input, d_output, N, iterations);
+    test_block_config(&info, d_input, d_input1, d_input2, d_input3, d_output, N, iterations);
     // test_l2_cache(&info, d_input, d_output, iterations);
-    test_vectorization(&info, d_input, d_output, N, iterations);
+    test_vectorization(&info, d_input, d_input1, d_input2, d_input3, d_output, N, iterations);
     
     // 清理
     CUDA_CHECK(cudaFree(d_input));
+    CUDA_CHECK(cudaFree(d_input1));
+    CUDA_CHECK(cudaFree(d_input2));
+    CUDA_CHECK(cudaFree(d_input3));
     CUDA_CHECK(cudaFree(d_output));
     
     printf("\n========== 测试完成 ==========\n\n");
