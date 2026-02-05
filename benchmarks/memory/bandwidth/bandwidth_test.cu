@@ -88,7 +88,7 @@ void test_block_config(const DeviceInfo* info, float* d_input, float* d_output,
             double bw = calculate_bandwidth(n * sizeof(float) * iterations, ms);
             double efficiency = (bw / info->theoretical_bandwidth) * 100.0;
             
-            printf("Blocks=%4d (%dx SMs), threadperblock=%d: %7.2f GB/s (效率 %.1f%%)\n",
+            printf("Blocks=%4d (%dx SMs), threadperblock=%4d: %7.2f GB/s (效率 %.1f%%)\n",
                 num_blocks, configs[i], block_size[j], bw, efficiency);
         }
     }
@@ -178,7 +178,7 @@ void test_vectorization(const DeviceInfo* info, float* d_input, float* d_output,
             double bw = calculate_bandwidth(n * sizeof(float) * iterations, ms);
             double efficiency = (bw / info->theoretical_bandwidth) * 100.0;
 
-            printf("Blocks=%4d (%dx SMs), threadperblock=%d: %7.2f GB/s (效率 %.1f%%)\n",
+            printf("Blocks=%4d (%dx SMs), threadperblock=%4d: %7.2f GB/s (效率 %.1f%%)\n",
                 num_blocks, configs[i], block_size[j], bw, efficiency);
         }
     }
