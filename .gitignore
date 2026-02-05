@@ -1,0 +1,19 @@
+# 构建产物
+*.o
+*.out
+*.exe
+*.ptx
+bandwidth_test
+
+# 结果文件
+results/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
