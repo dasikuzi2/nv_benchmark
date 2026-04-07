@@ -3,7 +3,9 @@
 *.out
 *.exe
 *.ptx
-bandwidth_test
+**/bandwidth_test
+**/gpu_info/gpu_info
+**/cluster_test/cluster_test
 
 # 结果文件
 results/

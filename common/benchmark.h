@@ -40,10 +40,17 @@ inline void get_device_info(DeviceInfo* info) {
     info->total_memory = prop.totalGlobalMem;
     info->l2_cache_size = prop.l2CacheSize;
     info->memory_bus_width = prop.memoryBusWidth;
-    info->memory_clock_rate = prop.memoryClockRate;
-    
+
+    int memory_clock_khz = 0;
+    CUDA_CHECK(cudaDeviceGetAttribute(&memory_clock_khz, cudaDevAttrMemoryClockRate, 0));
+    if (memory_clock_khz == 0) {
+        fprintf(stderr, "错误: 无法获取显存时钟频率 (cudaDevAttrMemoryClockRate)\n");
+        exit(EXIT_FAILURE);
+    }
+    info->memory_clock_rate = memory_clock_khz;
+
     // 计算理论带宽 (GB/s)
-    info->theoretical_bandwidth = 2.0 * prop.memoryClockRate * 
+    info->theoretical_bandwidth = 2.0 * memory_clock_khz *
                                   (prop.memoryBusWidth / 8.0) / 1e6;
 }
 

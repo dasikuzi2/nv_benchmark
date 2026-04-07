@@ -133,10 +133,10 @@ __global__ void load_float4_kernel_4input(const float4* __restrict__ input,
         float4 val1 = input1[i];
         float4 val2 = input2[i];
         float4 val3 = input3[i];
-        sum.x += val.x + val1.x + val2.x + val3.x;
-        sum.y += val.y + val1.y + val2.x + val3.x;
-        sum.z += val.z + val1.z + val2.x + val3.x;
-        sum.w += val.w + val1.w + val2.x + val3.x;
+        sum.x += val.x + val3.x;
+        sum.y += val1.y + val2.y;
+        sum.z += val.z + val3.z;
+        sum.w += val1.w + val2.w;
     }
     
     if (idx < gridDim.x * blockDim.x) {
@@ -265,9 +265,11 @@ void test_vectorization(const DeviceInfo* info, float* d_input,
                         float* d_input1, float* d_input2, float* d_input3,
                         float* d_output, size_t n, int iterations) {
     printf("\n========== 测试3: 向量测试float4 ==========\n\n");
+
+    size_t bytes = n * sizeof(float);
     
-    int configs[] = {1, 2, 4};
-    int block_size[] = {128, 256, 512, 1024};
+    int configs[] = {32, 64, 128, 160};
+    int block_size[] = {32, 64, 128, 256, 512, 1024};
     
     Timer timer;
     timer_init(&timer);
@@ -282,10 +284,10 @@ void test_vectorization(const DeviceInfo* info, float* d_input,
     float4* d_input3_4 = reinterpret_cast<float4*>(d_input3);
     float4* d_output4 = reinterpret_cast<float4*>(d_output);
 
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 4; j++) {
+    for (int i = 0; i < sizeof(configs) / sizeof(int); i++) {
+        for (int j = 0; j < sizeof(block_size) / sizeof(int); j++) {
             
-            int num_blocks = info->sm_count * configs[i];
+            int num_blocks = configs[i];
             int threadperblock = block_size[j];
             // Warmup
             load_float4_kernel<<<num_blocks, threadperblock>>>(d_input4, d_output4, n / 4);
@@ -320,8 +322,8 @@ void test_vectorization(const DeviceInfo* info, float* d_input,
             double bw2 = calculate_bandwidth(4 * n * sizeof(float) * iterations, ms2);
             double efficiency2 = (bw2 / info->theoretical_bandwidth) * 100.0;
 
-            printf("Blocks=%4d (%dx SMs), threadperblock=%4d: 一个线程一次load %7.2f GB/s (效率 %.1f%%)  一个线程两次load %7.2f GB/s (效率 %.1f%%)  一个线程四次load %7.2f GB/s (效率 %.1f%%)\n",
-                num_blocks, configs[i], block_size[j], bw, efficiency, bw1, efficiency1, bw2, efficiency2);
+            printf("Blocks=%4d, threadperblock=%4d: 一个线程一次load %7.2f GB/s (效率 %.1f%%)  一个线程两次load %7.2f GB/s (效率 %.1f%%)  一个线程四次load %7.2f GB/s (效率 %.1f%%)\n",
+                num_blocks, block_size[j], bw, efficiency, bw1, efficiency1, bw2, efficiency2);
         }
     }
     
@@ -337,7 +339,7 @@ int main() {
     print_device_info(&info);
     
     // 分配内存
-    const size_t N = 256 * 1024 * 1024;
+    const size_t N = 32 * 1024 * 1024;
     const size_t bytes = N * sizeof(float); // 1GB
     const int iterations = 100;
     
